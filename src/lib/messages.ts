@@ -87,7 +87,7 @@ export function morningMessage(season: Season, date: string, names: Names): stri
   const team = summarizeTeam(upto);
   if (team.planned > 0) {
     lines.push("");
-    lines.push(teamLine(team, names));
+    lines.push(teamLine(team, names, upto));
   }
 
   lines.push("");
@@ -105,16 +105,26 @@ export function morningMessage(season: Season, date: string, names: Names): stri
   return lines.join("\n");
 }
 
-/** One line of the team's conjunctive numbers. */
-function teamLine(team: TeamSummary, names: Names): string {
+/**
+ * One line of the team's conjunctive numbers.
+ *
+ * Deliberately shows both athletes' counts rather than labelling one of them as the one
+ * behind. The gap is the useful fact; naming a loser is not, and this line is read by both of
+ * them every morning for fifteen weeks.
+ */
+function teamLine(team: TeamSummary, names: Names, records: DayRecord[]): string {
   const bits = [`팀 ${team.bothDone}/${team.planned} (${Math.round(team.completion * 100)}%)`];
-  // The days one of them trained alone are the ones worth naming: the work happened and
-  // the team still scored nothing.
+  // The days one of them trained alone are worth naming: the work happened, and the person
+  // who did it should not read a flat team number as though nothing occurred.
   if (team.soloDays > 0) bits.push(`혼자 한 날 ${team.soloDays}일`);
   if (team.bothStreak > 0) bits.push(`둘 다 연속 ${team.bothStreak}일`);
   if (team.teamPaceSecPerKm !== null) bits.push(`팀 페이스 ${formatPace(team.teamPaceSecPerKm)}/km`);
-  const head = `👥 ${bits.join(" · ")}`;
-  return team.behind ? `${head}\n뒤처진 쪽: ${names[team.behind]}` : head;
+
+  const each = PLAYER_IDS.map((p) => {
+    const done = records.filter((r) => !r.isRest && r[p].done).length;
+    return `${names[p]} ${done}`;
+  }).join(" · ");
+  return `👥 ${bits.join(" · ")}\n각자 — ${each}`;
 }
 
 /** Evening nudge, or null when both have already logged today (or it is a rest day). */

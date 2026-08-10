@@ -68,11 +68,14 @@ test("the both-done streak breaks when either one misses", async () => {
   assert.equal(summarizeTeam(upto).bothStreak, 0, "A alone does not keep the team streak alive");
 });
 
-test("the morning brief shows a team line, not two individual ones", async () => {
+test("the morning brief leads with the team number and shows both counts, not a verdict", async () => {
+  // Both of them read this every morning for fifteen weeks. The gap is the useful fact;
+  // labelling one of them as the one behind is not.
   const season = await loadSeason(syntheticSeason({ seed: 75, upTo: "2026-08-07", complianceA: 1, complianceB: 0 }));
   const text = morningMessage(season, "2026-08-08", NAMES);
   assert.match(text, /팀 \d+\/\d+/);
-  assert.match(text, /뒤처진 쪽: 정재빈/);
+  assert.match(text, /각자 — Jay \d+ · 정재빈 \d+/, "both counts, side by side");
+  assert.doesNotMatch(text, /뒤처진|뒤쳐진/, "no verdict in the deterministic text");
 });
 
 // ---------------------------------------------------------------- commitments
