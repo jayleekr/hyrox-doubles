@@ -1,0 +1,29 @@
+{
+  "name": "hyrox-doubles",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3210",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-reporter=spec \"tests/*.test.ts\"",
+    "icons": "node scripts/make-icons.mjs",
+    "init-sheet": "node --env-file-if-exists=.env.local scripts/init-sheet.mjs",
+    "hyrox": "./bin/hyrox"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "google-auth-library": "^10.4.0",
+    "next": "^16.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.9.0"
+  }
+}

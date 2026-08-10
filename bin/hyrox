@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Wrapper so OpenClaw can call the CLI from any directory, with any PATH.
+#
+# The CLI is TypeScript run directly by Node's native type stripping, which needs Node
+# >= 22.18. OpenClaw's exec environment does not necessarily have a suitable `node`
+# first on PATH, so pick one deliberately and say so clearly when none is found.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+supports_type_stripping() {
+  local bin="$1"
+  [ -x "$bin" ] || return 1
+  local v
+  v="$("$bin" --version 2>/dev/null)" || return 1
+  v="${v#v}"
+  local major="${v%%.*}"
+  local rest="${v#*.}"
+  local minor="${rest%%.*}"
+  [ "$major" -ge 23 ] 2>/dev/null && return 0
+  [ "$major" -eq 22 ] && [ "$minor" -ge 18 ] 2>/dev/null && return 0
+  return 1
+}
+
+NODE=""
+for candidate in \
+  "${HYROX_NODE:-}" \
+  "$(command -v node 2>/dev/null || true)" \
+  /opt/homebrew/bin/node \
+  /usr/local/bin/node; do
+  [ -n "$candidate" ] || continue
+  if supports_type_stripping "$candidate"; then
+    NODE="$candidate"
+    break
+  fi
+done
+
+# nvm installs are not on PATH for non-interactive shells; check the newest one.
+if [ -z "$NODE" ] && [ -d "$HOME/.nvm/versions/node" ]; then
+  for candidate in $(ls -1 "$HOME/.nvm/versions/node" | sort -Vr); do
+    if supports_type_stripping "$HOME/.nvm/versions/node/$candidate/bin/node"; then
+      NODE="$HOME/.nvm/versions/node/$candidate/bin/node"
+      break
+    fi
+  done
+fi
+
+if [ -z "$NODE" ]; then
+  echo "hyrox: Node >= 22.18 이 필요해 (TypeScript 직접 실행). HYROX_NODE 로 경로를 지정할 수 있어." >&2
+  exit 127
+fi
+
+exec "$NODE" --env-file-if-exists="$ROOT/.env.local" "$ROOT/scripts/hyrox.ts" "$@"
