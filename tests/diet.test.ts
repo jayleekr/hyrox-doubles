@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+process.env.HYROX_JOURNAL = `${process.env.TMPDIR ?? "/tmp"}/hyrox-journal-test-diet.jsonl`;
 process.env.PLAYER_A_NAME = "Jay";
 process.env.PLAYER_B_NAME = "정재빈";
 

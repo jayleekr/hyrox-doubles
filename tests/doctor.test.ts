@@ -10,6 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+process.env.HYROX_JOURNAL = `${process.env.TMPDIR ?? "/tmp"}/hyrox-journal-test-doctor.jsonl`;
 process.env.PLAYER_A_NAME = "Jay";
 process.env.PLAYER_B_NAME = "정재빈";
 process.env.TELEGRAM_USER_A = "514675395";
@@ -88,6 +89,8 @@ test("every check runs in a fixed order and every one is reported", async () => 
       "season.window",
       "clock.timezone",
       "identity.roundtrip",
+      "agent.pulse",
+      "agent.scheduled",
       "sheet.read",
       "sheet.anchors",
       "sheet.tabs",
@@ -470,7 +473,7 @@ test("doctor never throws: a client that explodes on every call still produces a
     },
   };
   const report = await runDoctor(exploding, TODAY, { now: NOW, writeProbe: true });
-  assert.equal(report.checks.length, 13, "every check still reported");
+  assert.equal(report.checks.length, 15, "every check still reported");
   assert.equal(check(report, "sheet.read").status, "FAIL");
   assert.equal(report.exitCode, 2);
   assert.ok(renderDoctor(report).includes("판정:"));
@@ -512,7 +515,7 @@ test("--json carries the whole report and nothing that has to be parsed out of p
   };
   assert.equal(parsed.today, TODAY);
   assert.equal(parsed.exitCode, r.code);
-  assert.equal(parsed.checks.length, 13);
+  assert.equal(parsed.checks.length, 15);
   assert.ok(parsed.unverifiable.length > 0);
   assert.equal(typeof parsed.ok, "boolean");
 });

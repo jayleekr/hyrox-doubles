@@ -15,3 +15,5 @@ scratchpad/
 agent/media/
 agent/memory/dreaming/
 agent/memory/.dreams/
+#   .hyrox-journal.jsonl  operational telemetry, churns every command
+agent/.hyrox-journal.jsonl

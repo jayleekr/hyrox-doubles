@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+process.env.HYROX_JOURNAL = `${process.env.TMPDIR ?? "/tmp"}/hyrox-journal-test-stats.jsonl`;
 import { parseGrid, type DayRecord } from "../src/lib/grid.ts";
 import { findByDate, missedDays, recordsForWeek, streak, summarize, weekSummaries } from "../src/lib/stats.ts";
 import { LOG_RANGE } from "../src/lib/store.ts";

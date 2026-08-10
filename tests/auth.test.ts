@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+process.env.HYROX_JOURNAL = `${process.env.TMPDIR ?? "/tmp"}/hyrox-journal-test-auth.jsonl`;
+
 process.env.PLAYER_A_KEY = "key-alpha-11111111";
 process.env.PLAYER_B_KEY = "key-bravo-22222222";
 

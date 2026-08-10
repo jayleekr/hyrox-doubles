@@ -13,6 +13,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+process.env.HYROX_JOURNAL = `${process.env.TMPDIR ?? "/tmp"}/hyrox-journal-test-docs.jsonl`;
 process.env.PLAYER_A_NAME = "Jay";
 process.env.PLAYER_B_NAME = "정재빈";
 

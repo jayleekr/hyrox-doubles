@@ -221,6 +221,7 @@ Two OpenClaw automations, both in `Asia/Seoul`:
 |---|---|---|
 | `hyrox-morning` | 06:00 daily | today's session; on Sundays also the previous week's review |
 | `hyrox-nudge` | 21:00 daily | pings whoever has not logged; silent when there is nothing to say |
+| `hyrox-doctor` | 12:00 daily | runs `hyrox doctor` and speaks **only** when something is wrong |
 
 ```bash
 openclaw cron status            # scheduler health and job count
@@ -439,6 +440,7 @@ src/lib/
   season.ts    date ↔ row arithmetic, KST today, week/phase boundaries
   cells.ts     cell text ↔ typed values (round-trip guaranteed)
   diet.ts      the 식단 tab: four meals a day per athlete, as text
+  journal.ts   local append-only record: agent liveness, brief runs, undo history
   grid.ts      grid ↔ records; minimal cell-update planning
   stats.ts     completion, streaks, weekly aggregates
   phases.ts    Phase 1-4 targets, and that tab's row/header anchors

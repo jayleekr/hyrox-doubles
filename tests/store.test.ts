@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+process.env.HYROX_JOURNAL = `${process.env.TMPDIR ?? "/tmp"}/hyrox-journal-test-store.jsonl`;
 import { loadDay, loadSeason, saveLog } from "../src/lib/store.ts";
 import { syntheticSeason } from "./fake-sheet.ts";
 import { SHEET_LOG_TAB } from "../src/lib/season.ts";

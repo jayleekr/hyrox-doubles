@@ -53,6 +53,7 @@ import {
 } from "./season.ts";
 import { isSheetBacked } from "./phases.ts";
 import { COL } from "./season.ts";
+import { hoursSince, lastOf, missedBriefDays, readJournal, type JournalEvent } from "./journal.ts";
 
 export type CheckStatus = "PASS" | "WARN" | "FAIL" | "SKIP";
 
@@ -620,6 +621,110 @@ async function guard(id: string, run: () => DoctorCheck | Promise<DoctorCheck>):
   }
 }
 
+
+/** Hours of silence before the agent is presumed unreachable rather than merely idle. */
+const PULSE_WARN_HOURS = 6;
+const PULSE_FAIL_HOURS = 24;
+
+/**
+ * Whether the agent itself has done anything recently.
+ *
+ * This is the check the rest of `doctor` cannot make. Every silent outage so far lived on the
+ * inbound side — a group policy drop, a kicked bot, a workspace path alias — where the sheet
+ * stays perfectly healthy and no command runs to notice. The agent records a pulse at the end
+ * of each turn, so the *absence* of pulses is the evidence, and "nothing for five hours" is a
+ * number a human can act on.
+ *
+ * Never a FAIL on its own before the agent has ever pulsed: a fresh install has no history,
+ * and reporting that as a broken inbound path would be a lie on day one.
+ */
+function checkPulse(events: JournalEvent[], now: Date): DoctorCheck {
+  const last = lastOf(events, "pulse");
+  if (!last) {
+    return skip(
+      "agent.pulse",
+      "에이전트 활동 기록이 아직 없어 — 수신 경로가 살아있는지 여기서는 알 수 없어.",
+      `Rox 가 턴 끝에 ${cliCommand()} pulse 를 부르게 하면 이 항목이 켜져.`,
+    );
+  }
+  const hours = hoursSince(last.at, now);
+  if (hours === null) return skip("agent.pulse", "활동 기록 시각을 읽지 못했어.");
+
+  const when = hours < 1 ? `${Math.round(hours * 60)}분 전` : `${Math.round(hours)}시간 전`;
+  if (hours >= PULSE_FAIL_HOURS) {
+    return fail(
+      "agent.pulse",
+      `에이전트가 ${when}부터 조용해 — 마지막 활동 ${last.at.slice(0, 16).replace("T", " ")}`,
+      "텔레그램 수신이 끊겼을 수 있어. openclaw channels status --probe 로 폴링과 그룹 도달성을 보고, " +
+        "게이트웨이 로그에서 not-allowed / no-mention / 403 / workspace path alias 를 찾아봐.",
+      "human",
+      "local",
+    );
+  }
+  if (hours >= PULSE_WARN_HOURS) {
+    return warn("agent.pulse", `마지막 활동 ${when} — 아직 이상은 아니지만 조용해.`, "곧 다시 확인해봐. 계속 조용하면 수신 경로를 의심해.", "human");
+  }
+  return pass("agent.pulse", `마지막 활동 ${when}`);
+}
+
+/**
+ * Scheduled briefs that never ran.
+ *
+ * The 21:00 nudge once failed four evenings in a row while the 06:00 push kept working, so
+ * nothing looked wrong from the outside. A brief counts as having run even when it had
+ * nothing to say — a quiet rest day is a successful run, and treating it as a miss would
+ * report a problem every Sunday.
+ */
+function checkScheduled(
+  events: JournalEvent[],
+  today: string,
+  windowDays = 7,
+): DoctorCheck {
+  const from = (() => {
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - windowDays);
+    return d.toISOString().slice(0, 10);
+  })();
+  // Yesterday, not today: today's evening brief has not been due yet at most hours.
+  const to = (() => {
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  if (to < from) return skip("agent.scheduled", "확인할 기간이 없어.");
+
+  const anyRun = events.some((e) => e.kind === "brief");
+  if (!anyRun) {
+    return skip("agent.scheduled", "예약 브리핑 실행 기록이 아직 없어 — 하루 지나면 볼 수 있어.");
+  }
+
+  const parts: string[] = [];
+  let worst = 0;
+  for (const brief of ["morning", "nudge"]) {
+    const missed = missedBriefDays(events, brief, from, to);
+    // Only count days at or after the first recorded run of that brief: days before the
+    // journal existed are not evidence of a failure.
+    const first = events.find((e) => e.kind === "brief" && e.brief === brief);
+    const since = first && first.kind === "brief" ? first.date : from;
+    const real = missed.filter((d: string) => d >= since);
+    parts.push(`${brief} ${real.length === 0 ? "정상" : `${real.length}회 누락`}`);
+    worst = Math.max(worst, real.length);
+  }
+  const summary = `최근 ${windowDays}일 — ${parts.join(" / ")}`;
+  if (worst >= 2) {
+    return fail(
+      "agent.scheduled",
+      summary,
+      "예약 작업이 안 돌고 있어. openclaw cron list 로 consecutiveErrors 를 보고, " +
+        "맥이 배터리로 자면 그 시각 작업은 못 나간다는 점도 확인해.",
+      "human",
+      "local",
+    );
+  }
+  if (worst === 1) return warn("agent.scheduled", summary, "한 번은 우연일 수 있어. 반복되면 cron 과 절전 설정을 봐.", "human");
+  return pass("agent.scheduled", summary);
+}
+
 export async function runDoctor(
   client: SheetsClient,
   today: string,
@@ -637,6 +742,11 @@ export async function runDoctor(
   checks.push(await guard("season.window", () => checkSeasonWindow(today)));
   checks.push(await guard("clock.timezone", () => checkClock(today, now)));
   checks.push(await guard("identity.roundtrip", () => checkTelegramRoundtrip(options.telegram)));
+
+  // Read once; both checks below are about the same file.
+  const events = await readJournal();
+  checks.push(await guard("agent.pulse", () => checkPulse(events, now)));
+  checks.push(await guard("agent.scheduled", () => checkScheduled(events, today)));
 
   let season: Season | null = null;
   let readCheck: DoctorCheck;

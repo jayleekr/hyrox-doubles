@@ -39,6 +39,7 @@ import { morningBrief, nudgeBrief, savedBrief, weeklyBrief } from "./briefs.ts";
 import { adherence, findByDate, paceGap, recordsForWeek, streak, summarize, trend } from "./stats.ts";
 import { clampMessage, formatDday } from "./messages.ts";
 import { renderDoctor, runDoctor } from "./doctor.ts";
+import { lastWrite, readJournal, record, trimJournal } from "./journal.ts";
 
 export type CliResult = {
   code: number;
@@ -660,6 +661,8 @@ function helpText(): string {
   brief <morning|nudge|weekly> [--date <YYYY-MM-DD>]
                                  정해진 시각에 보낼 문구 (nudge/weekly는 없으면 빈 출력)
   log <대상> [값...]              기록 저장
+  pulse [--note <text>]          에이전트가 살아있다는 흔적 (턴 끝에 호출)
+  undo [--dry-run]               마지막 기록 한 건 되돌리기
   doctor [--telegram <id>] [--json] [--write-probe]
                                  배선 자가 진단 (설정·신원·시트·기록 신선도)
 
@@ -896,15 +899,69 @@ export async function runCli(
         if (isError(date)) return usage(date.error);
         const season = await loadSeason(client);
 
-        if (kind === "morning") return ok(morningBrief(season, date).join("\n\n---\n\n"));
-        if (kind === "nudge") return ok(nudgeBrief(season, date) ?? "");
+        // Recorded whether or not it had anything to say. "Nothing to nudge about" is a
+        // successful run, and the check that matters is whether the job fired at all — four
+        // consecutive evenings once failed with the morning push still working, which looked
+        // like nothing being wrong.
+        const ran = async (text: string) => {
+          await record({ at: new Date().toISOString(), kind: "brief", brief: kind, date, emitted: text !== "" });
+          return ok(text);
+        };
+
+        if (kind === "morning") return ran(morningBrief(season, date).join("\n\n---\n\n"));
+        if (kind === "nudge") return ran(nudgeBrief(season, date) ?? "");
         if (kind === "weekly") {
           // Weeks run Saturday→Friday, so on Sunday the week that just closed is the one
           // two days back. Any other day reviews the week seven days back.
           const anchor = weekdayKo(date) === "일요일" ? addDaysSafe(date, -2) : addDaysSafe(date, -7);
-          return ok(weeklyBrief(season, anchor) ?? "");
+          return ran(weeklyBrief(season, anchor) ?? "");
         }
         return usage("brief는 morning | nudge | weekly 중 하나여야 해.");
+      }
+
+      // The agent calls this at the end of a turn. It is the only evidence this CLI can have
+      // that the inbound path is alive: a message that never arrives runs no command, so the
+      // absence of pulses is the signal. Every silent outage so far — a policy drop, a kicked
+      // bot, a workspace alias — would have shown up here within the hour.
+      case "pulse": {
+        const note = flagString(args, "note");
+        await record({ at: new Date().toISOString(), kind: "pulse", ...(note ? { note } : {}) });
+        await trimJournal();
+        return ok("ok");
+      }
+
+      case "undo": {
+        const events = await readJournal();
+        const last = lastWrite(events);
+        if (!last) return usage("되돌릴 기록이 없어.");
+
+        const names = playerNames();
+        const when = last.at.slice(0, 16).replace("T", " ");
+        if (flagBool(args, "dry-run") || flagBool(args, "explain")) {
+          return ok(
+            [
+              `되돌릴 대상: ${when} · ${names[last.player]} · ${last.date} · ${last.target}`,
+              `되돌리면 이 값으로 돌아가: ${JSON.stringify(last.undo, null, 2)}`,
+              "실행하려면 --dry-run 없이 다시.",
+            ].join("\n"),
+          );
+        }
+
+        if (last.target === "log") {
+          await saveLog(client, last.date, last.player, last.undo as LogPatch);
+        } else if (last.target === "meal") {
+          const { saveMeals } = await import("./store.ts");
+          await saveMeals(client, last.date, last.player, last.undo as import("./diet.ts").DietPatch);
+        } else {
+          return failure(
+            `목표 값(goal) 되돌리기는 아직 안 돼. ${when}에 ${names[last.player]}의 ${last.date} 목표를 바꿨어 — 직접 다시 넣어줘.`,
+          );
+        }
+
+        // The undo is itself a write, but it is deliberately NOT journalled: recording it
+        // would make the next `undo` undo the undo, which is a toggle, not a history. One
+        // step back is the whole promise.
+        return ok(`${when}에 쓴 ${names[last.player]} ${last.date} ${last.target} 기록을 되돌렸어.`);
       }
 
       case "meal": {
@@ -943,6 +1000,18 @@ export async function runCli(
         }
 
         const saved = await saveMeals(client, date, player, patch);
+        await record({
+          at: new Date().toISOString(),
+          kind: "write",
+          target: "meal",
+          date,
+          player,
+          undo: Object.fromEntries(
+            Object.keys(patch).map((k) => [k, (saved.before as Record<string, unknown>)[k] ?? null]),
+          ),
+          patch: patch as Record<string, unknown>,
+          cells: saved.written,
+        });
         const after = await loadDietDay(client, date);
         if (!after) return failure(`${date} 식단은 저장했는데 다시 읽지 못했어.`);
 
@@ -1096,6 +1165,20 @@ export async function runCli(
         }
 
         const saved = await saveLog(client, date, player, patch);
+        // The previous values of exactly the fields this command touched — not the whole row.
+        // Undoing a weight must not also revert a memo somebody wrote in between.
+        await record({
+          at: new Date().toISOString(),
+          kind: "write",
+          target: "log",
+          date,
+          player,
+          undo: Object.fromEntries(
+            Object.keys(patch).map((k) => [k, (saved.before as Record<string, unknown>)[k] ?? null]),
+          ),
+          patch: patch as Record<string, unknown>,
+          cells: saved.written,
+        });
         // Re-read so the confirmation reflects what the sheet actually holds, including
         // the partner's status — not what we hoped we wrote.
         const after = await loadDay(client, date);

@@ -554,6 +554,41 @@ re-reads. When a fact changes, rewrite the line rather than appending a contradi
 
 When something you remember conflicts with the sheet, the sheet wins and the memory is wrong.
 
+## Leave a trace, every turn
+
+Run this once at the end of every turn in which you did anything:
+
+```bash
+/Users/jaylee/CodeWorkspace/hyrox/bin/hyrox pulse
+```
+
+It writes one line to a local file and prints `ok`. Nothing else.
+
+This matters more than it looks. Every outage this system has had was **silent**: a group
+policy dropped every message, the bot was removed from the chat, a workspace path stopped
+resolving, four consecutive evening pushes failed. In all of them the sheet was healthy and
+the CLI was fine — no command ran, so nothing noticed, and a person had to say "it isn't
+answering" days later.
+
+A pulse is the one piece of evidence that survives an inbound break, because it is *missing*.
+`/Users/jaylee/CodeWorkspace/hyrox/bin/hyrox doctor` reads it and can then say "에이전트가 9시간째 조용해", which is something a human
+can act on. Skip the pulse and that check goes blind.
+
+## Undoing a mistake
+
+```bash
+/Users/jaylee/CodeWorkspace/hyrox/bin/hyrox undo --dry-run    # what would be restored
+/Users/jaylee/CodeWorkspace/hyrox/bin/hyrox undo              # restore it
+```
+
+One step back, and only the fields the last write actually touched — undoing a weight will
+not revert a memo written afterwards. It is not a toggle: running it twice does not put the
+new value back, because a second undo would otherwise be indistinguishable from a redo.
+
+Use it when someone says "아 그거 아니야" right after a log. Do not use it to fix something
+from yesterday — go and write the correct value instead, which is clearer and leaves both
+facts in the journal. Goal-weight writes cannot be undone this way and will say so.
+
 ## When something goes wrong
 
 Exit codes tell you whether retrying is worth it:
