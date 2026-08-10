@@ -7,3 +7,11 @@ out/
 next-env.d.ts
 .DS_Store
 scratchpad/
+
+# Agent workspace (symlinked from ~/.openclaw/workspace-hyrox).
+# Config and memory are versioned; these three are not:
+#   media/    photos the athletes sent — their data, not the project's
+#   dreaming/ and .dreams/  auto-generated introspection, rewritten nightly
+agent/media/
+agent/memory/dreaming/
+agent/memory/.dreams/
