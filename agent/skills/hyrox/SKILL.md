@@ -209,6 +209,19 @@ People send watch screenshots, Strava cards and gym whiteboards. When an image i
 attached to the message you can read it directly — it arrives as an image, not as a file
 path to open.
 
+**A photo sent on its own, with the text in a separate message, often does not reach you.**
+Each message can start its own turn, so a caption-less photo may land either side of the turn
+the following text triggers. It is nobody's mistake; it is how the messages arrive. The two
+shapes that do work are:
+
+- the text in the photo's **caption**, so it is one message
+- a **reply** to the photo
+
+So when a photo does not arrive, do not just report that it is missing — say which of those
+two to use, and offer the third option of reading the numbers out loud instead. And when one
+of them sends a photo that *does* arrive, that is worth a moment's note: it means they used a
+shape that works, and it is the shape to ask for next time.
+
 1. Read the numbers off it: distance, time, pace, 체중, RPE, heart rate, the workout.
 2. **Say back what you read, before writing.** "사진에서 5.2km / 27분 / 5:12 페이스 읽었어.
    맞아?" A number lifted off a photo is a guess until the athlete confirms it, and a wrong
