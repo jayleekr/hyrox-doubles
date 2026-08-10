@@ -149,11 +149,14 @@ own bot token, its own workspace, exactly one skill, and one tool:
 agents.entries.hyrox
   workspace: ~/.openclaw/workspace-hyrox     # own IDENTITY.md / SOUL.md
   skills:    ["hyrox"]                        # this one and nothing else
-  tools:     { allow: ["exec"] }              # enough to run bin/hyrox, nothing more
+  tools:     { allow: ["exec",                # enough to run bin/hyrox
+                       "web_search","web_fetch"] }  # and to look something up before advising
 ```
 
-That is the whole isolation story: the training bot cannot reach another agent's mail,
-calendar, notes or credentials, because it has neither the skills nor the tools to.
+`web_search` and `web_fetch` are allowed alongside `exec` so the coach can look something up
+before giving training or nutrition advice rather than guessing. That is the whole isolation
+story: the training bot cannot reach another agent's mail, calendar, notes or credentials,
+because it has neither the skills nor the tools to.
 
 `exec` is deliberately the *only* tool, and in particular **`read` must not be added to make
 photos work**. OpenClaw hydrates inbound image bytes itself, stages them into
