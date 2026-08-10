@@ -288,7 +288,8 @@ export function normaliseDateCell(raw: string): string | null {
 }
 
 /** "토", "토요일", "Sat", "Saturday" all denote the same day. Blank stays blank. */
-function normaliseWeekday(raw: string): string {
+/** Exported so the 식단 tab checks its weekday column the same way the log tab does. */
+export function normaliseWeekday(raw: string): string {
   const s = raw.trim().toLowerCase();
   if (!s) return "";
   if (WEEKDAY_ALIASES[s]) return WEEKDAY_ALIASES[s];

@@ -12,6 +12,7 @@ import {
   SHEET_GOAL_TAB,
   SHEET_LOG_TAB,
   SHEET_PHASE_TAB,
+  SHEET_DIET_TAB,
   rowForDate,
 } from "./season.ts";
 import {
@@ -44,6 +45,8 @@ import { GOAL_WEIGHT_PLACEHOLDER, formatWeightCell, isUnreadableWeightCell } fro
 export const LOG_RANGE = `'${SHEET_LOG_TAB}'!A${FIRST_ROW}:V${LAST_ROW}`;
 export const PHASE_RANGE = `'${SHEET_PHASE_TAB}'!A${PHASE_FIRST_ROW}:H${PHASE_LAST_ROW}`;
 export const PHASE_HEADER_RANGE = `'${SHEET_PHASE_TAB}'!A${PHASE_HEADER_ROW}:H${PHASE_HEADER_ROW}`;
+export const DIET_RANGE = `'${SHEET_DIET_TAB}'!A${FIRST_ROW}:K${LAST_ROW}`;
+export const DIET_HEADER_RANGE = `'${SHEET_DIET_TAB}'!A4:K4`;
 export const HEADER_RANGE = `'${SHEET_LOG_TAB}'!A3:V4`;
 /**
  * Section 1 of the goal tab only. Section 2 (rows 12-18) is authored prose the app has no
@@ -401,4 +404,79 @@ export async function saveLogTarget(
     written: result.written,
     date: result.date,
   };
+}
+
+// ---------------------------------------------------------------- 식단
+
+/**
+ * One day's meals for both athletes, read fresh with the same anchor discipline as a log.
+ *
+ * A meal filed against the wrong row is quieter than a wrong weight — nobody notices that
+ * Tuesday's dinner is on Wednesday — so the checks are not softer here just because the data
+ * is free text.
+ */
+export async function loadDietDay(
+  client: SheetsClient,
+  date: string,
+): Promise<import("./diet.ts").DietDay | null> {
+  const { parseDietRow, dietDateMismatches, dietHeaderMismatches } = await import("./diet.ts");
+  const row = rowForDate(date);
+  if (row === null) return null;
+
+  const [range, header] = await client.batchGet([
+    `'${SHEET_DIET_TAB}'!A${row}:K${row}`,
+    DIET_HEADER_RANGE,
+  ]);
+
+  const headerProblems = dietHeaderMismatches(header?.values);
+  if (headerProblems.length > 0) {
+    const h = headerProblems[0];
+    throw new Error(
+      `"${SHEET_DIET_TAB}" 시트의 ${h.column}4 칸이 "${h.found || "(비어 있음)"}"인데 ${h.expected}이어야 해. ` +
+        `열이 추가/삭제된 것 같아 — 고치기 전에는 식단을 쓰지 않을게. 한쪽 끼니가 다른 사람 칸에 들어가.`,
+    );
+  }
+
+  const cells = (range?.values?.[0] as unknown[]) ?? [];
+  const grid: unknown[][] = [];
+  grid[0] = cells;
+  const problems = dietDateMismatches(grid, row);
+  if (problems.length > 0) {
+    const p = problems[0];
+    throw new Error(
+      `"${SHEET_DIET_TAB}" 시트 ${row}행의 ${p.column} 칸이 "${p.found || "(비어 있음)"}"인데 ${p.expected}이어야 해. ` +
+        `행이 추가/삭제된 것 같아 — 고치기 전에는 식단을 쓰지 않을게.`,
+    );
+  }
+
+  return parseDietRow(cells, row);
+}
+
+export type MealSaveResult = {
+  date: string;
+  row: number;
+  player: PlayerId;
+  before: import("./diet.ts").MealLog;
+  after: import("./diet.ts").MealLog;
+  written: number;
+};
+
+export async function saveMeals(
+  client: SheetsClient,
+  date: string,
+  player: PlayerId,
+  patch: import("./diet.ts").DietPatch,
+): Promise<MealSaveResult> {
+  const { buildDietUpdates } = await import("./diet.ts");
+  const row = rowForDate(date);
+  if (row === null) throw new Error(`${date} is outside the 15-week season`);
+
+  const day = await loadDietDay(client, date);
+  if (!day) throw new Error(`Could not read row ${row} of "${SHEET_DIET_TAB}" for ${date}`);
+
+  const before = day[player];
+  const { updates, next } = buildDietUpdates(row, player, before, patch);
+  await client.batchUpdate(updates);
+
+  return { date, row, player, before, after: next, written: updates.length };
 }

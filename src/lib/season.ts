@@ -7,6 +7,7 @@
 
 export const SHEET_LOG_TAB = "15주 상세 일지 (2인 전용)";
 export const SHEET_PHASE_TAB = "15주 단계별 요약 (2인)";
+export const SHEET_DIET_TAB = "식단 기록";
 export const SHEET_GOAL_TAB = "목표 및 더블 운영 원칙";
 
 export const SEASON_START = "2026-08-01";
@@ -43,6 +44,31 @@ export const COL = {
   aCommit: "U",
   bCommit: "V",
 } as const;
+
+/**
+ * The 식단 tab's columns. It shares the log tab's rows exactly — same FIRST_ROW/LAST_ROW,
+ * same A/B/C date-week-weekday prefix — so `rowForDate` and the date/weekday anchors apply
+ * unchanged. A second row convention would be a second way to file a meal against the wrong
+ * day, which is the one failure this design refuses to introduce twice.
+ */
+export const DIET_COL = {
+  date: "A",
+  week: "B",
+  weekday: "C",
+  A: { breakfast: "D", lunch: "E", dinner: "F", snack: "G" },
+  B: { breakfast: "H", lunch: "I", dinner: "J", snack: "K" },
+} as const;
+
+export const MEALS = ["breakfast", "lunch", "dinner", "snack"] as const;
+export type Meal = (typeof MEALS)[number];
+
+/** What each meal is called in the sheet and in conversation. */
+export const MEAL_KO: Record<Meal, string> = {
+  breakfast: "아침",
+  lunch: "점심",
+  dinner: "저녁",
+  snack: "간식",
+};
 
 /**
  * Geometry of "15주 단계별 요약 (2인)". Row 3 is the header, rows 4-7 are Phase 1-4.

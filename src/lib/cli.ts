@@ -652,6 +652,8 @@ function helpText(): string {
   stats --who <a|b> [--json]     시즌 누적
   setup [<대상>] [--json]        목표 값 중 아직 비어 있는 것 (온보딩)
                                  대상을 주면 네 것부터 알려줌 (읽기 전용, 선택)
+  diet [<YYYY-MM-DD>] [--json]   그날 두 사람 식단
+  meal <대상> --<끼니> <내용>     식단 기록 (끼니: 아침/점심/저녁/간식)
   goal show [--json]             목표 몸무게 전부 보기
   goal <대상> [--phase N|--date D] --weight <kg>
                                  목표 몸무게 저장
@@ -877,6 +879,78 @@ export async function runCli(
           return ok(weeklyBrief(season, anchor) ?? "");
         }
         return usage("brief는 morning | nudge | weekly 중 하나여야 해.");
+      }
+
+      case "meal": {
+        const player = resolvePlayer(args);
+        if (isError(player)) return usage(player.error);
+
+        const rawDate = flagString(args, "date") ?? today;
+        const date = validDate(rawDate);
+        if (isError(date)) return usage(date.error);
+
+        const { MEALS, MEAL_KO } = await import("./season.ts");
+        const { describeMeals, mealsLogged } = await import("./diet.ts");
+        const { loadDietDay, saveMeals } = await import("./store.ts");
+
+        const patch: Record<string, string | null> = {};
+        const cleared: string[] = [];
+        for (const meal of MEALS) {
+          // Both the English key and the Korean word work, because the agent is reading
+          // Korean and the athletes say 아침, not breakfast.
+          const raw = flagString(args, meal) ?? flagString(args, MEAL_KO[meal]);
+          if (raw === null) continue;
+          if (isMissingValue(raw)) {
+            // Same rule as --memo: a dropped value is ambiguous, and food text is exactly
+            // what nobody wants to retype. Announce rather than erase in silence.
+            cleared.push(MEAL_KO[meal]);
+          }
+          patch[meal] = isClear(raw) ? null : raw.trim();
+        }
+
+        if (Object.keys(patch).length === 0) {
+          const names = playerNames();
+          return usage(
+            `어떤 끼니인지 알려줘: ${MEALS.map((m) => `--${MEAL_KO[m]} "<먹은 것>"`).join(" / ")}. ` +
+              `예: meal --who a --저녁 "닭가슴살 200g + 현미밥"  (${names[player]})`,
+          );
+        }
+
+        const saved = await saveMeals(client, date, player, patch);
+        const after = await loadDietDay(client, date);
+        if (!after) return failure(`${date} 식단은 저장했는데 다시 읽지 못했어.`);
+
+        const names = playerNames();
+        if (json) return ok(JSON.stringify(after, null, 2));
+
+        const lines = [`${names[player]} · ${date} 식단`, describeMeals(after[player])];
+        for (const c of cleared) {
+          const had = saved.before[MEALS.find((m) => MEAL_KO[m] === c)!];
+          if (had) lines.push(`⚠️ --${c} 뒤에 값이 없어서 지웠어: "${had}" — 비울 생각이 아니었으면 다시 넣어줘.`);
+        }
+        const other: PlayerId = player === "A" ? "B" : "A";
+        lines.push(`${names[other]} — ${mealsLogged(after[other])}/4 끼니 기록됨`);
+        return ok(clampMessage(lines.join("\n")));
+      }
+
+      case "diet": {
+        const rawDate = args.positional[1] ?? flagString(args, "date") ?? today;
+        const date = validDate(rawDate);
+        if (isError(date)) return usage(date.error);
+
+        const { MEAL_KO } = await import("./season.ts");
+        const { describeMeals } = await import("./diet.ts");
+        const { loadDietDay } = await import("./store.ts");
+
+        const day = await loadDietDay(client, date);
+        if (!day) return usage(`${date}은 15주 프로그램 밖이야 (${SEASON_START} ~ ${RACE_DATE}).`);
+        if (json) return ok(JSON.stringify(day, null, 2));
+
+        const names = playerNames();
+        const lines = [`🥗 ${date} 식단`];
+        for (const p of PLAYER_IDS) lines.push(`${names[p]} — ${describeMeals(day[p])}`);
+        void MEAL_KO;
+        return ok(clampMessage(lines.join("\n")));
       }
 
       case "log": {

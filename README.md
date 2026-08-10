@@ -57,6 +57,15 @@ Two further tabs hold the 목표 몸무게 the briefs and the weight trend are m
 | `목표 및 더블 운영 원칙` | rows 7–10 and section 2 (운영 원칙) | no — authored prose, read verbatim |
 | `15주 단계별 요약 (2인)` | D4:E7 — Phase 1–4 목표 몸무게 | **yes** — `hyrox goal --phase` |
 | `15주 단계별 요약 (2인)` | everything else | no |
+| `식단 기록` | D:K — 하루 4끼 × 2인 | **yes** — `hyrox meal` |
+| `운영 방식 & 근거` | everything | no — written once by `scripts/add-approach-tab.mjs`, for humans |
+
+The 식단 tab shares the log tab's rows exactly (5–109, same A/B/C prefix), so a date resolves
+to one row by the same arithmetic and the same anchors. A second row convention would be a
+second way to file an entry against the wrong day.
+
+Meals are stored as text, not calories. A calorie figure lifted off a photo is a guess wearing
+a number's clothes, and once it is in a column it gets averaged as though it were measured.
 
 A target cell holding text no parser reads back — `82 (10월까지)`, `82~84`, `현재 체중 유지` —
 is left alone: the write is refused rather than replacing what you wrote with a bare `82kg`.
@@ -429,6 +438,7 @@ src/lib/
   messages.ts  every string the agent can emit (pure, plain text)
   season.ts    date ↔ row arithmetic, KST today, week/phase boundaries
   cells.ts     cell text ↔ typed values (round-trip guaranteed)
+  diet.ts      the 식단 tab: four meals a day per athlete, as text
   grid.ts      grid ↔ records; minimal cell-update planning
   stats.ts     completion, streaks, weekly aggregates
   phases.ts    Phase 1-4 targets, and that tab's row/header anchors

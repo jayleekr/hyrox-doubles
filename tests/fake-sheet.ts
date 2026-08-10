@@ -6,6 +6,7 @@ import type { SheetsClient, ValueRange } from "../src/lib/sheets.ts";
 import {
   FIRST_ROW,
   LAST_ROW,
+  SHEET_DIET_TAB,
   SHEET_GOAL_TAB,
   SHEET_LOG_TAB,
   SHEET_PHASE_TAB,
@@ -237,6 +238,22 @@ export function syntheticSeason(opts: SyntheticOptions = {}): FakeSheet {
         sheet.set(SHEET_LOG_TAB, row, paceCol + 2, String(5 + Math.floor(rand() * 5)));
       }
     }
+  }
+
+  // 식단 tab: deliberately the same rows as the log tab, with the header on row 4. The eight
+  // meal columns repeat 아침/점심/저녁/간식 twice, so the header is what pins the boundary
+  // between the two athletes at G|H.
+  for (const [col, text] of [
+    [3, "아침"], [4, "점심"], [5, "저녁"], [6, "간식"],
+    [7, "아침"], [8, "점심"], [9, "저녁"], [10, "간식"],
+  ] as [number, string][]) {
+    sheet.set(SHEET_DIET_TAB, 4, col, text);
+  }
+  for (let row = FIRST_ROW; row <= LAST_ROW; row++) {
+    const d = dateForRow(row)!;
+    sheet.set(SHEET_DIET_TAB, row, 0, d);
+    sheet.set(SHEET_DIET_TAB, row, 1, `W${weekForDate(d)}`);
+    sheet.set(SHEET_DIET_TAB, row, 2, weekdayKo(d)!);
   }
 
   // Phase tab, matching the real sheet's A3:H7 block — header row included, because the
