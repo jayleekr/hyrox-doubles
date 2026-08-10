@@ -1,6 +1,7 @@
 // Aggregations over parsed day records. Pure; no I/O.
 
 import type { DayRecord, PlayerId } from "./grid.ts";
+import { parsePaceTarget } from "./cells.ts";
 import { LAST_ROW, FIRST_ROW, weekForDate } from "./season.ts";
 
 export type Summary = {
@@ -175,4 +176,128 @@ export function recordsForWeek(records: DayRecord[], date: string): DayRecord[] 
   const w = weekForDate(date);
   if (w === null) return [];
   return records.filter((r) => r.week === w);
+}
+
+// ---------------------------------------------------------------- computed, not re-derived
+//
+// Everything below was being worked out by hand from --json on every conversation. A number
+// recomputed each time is a number that can be wrong differently each time, and no test ever
+// sees it. These are the same figures, computed once and covered.
+
+export type Adherence = {
+  /** Trainable days completed. */
+  done: number;
+  /** Of those, the ones done as prescribed — no substitute recorded. */
+  asPrescribed: number;
+  /** Of those, the ones where something else was done instead. */
+  substituted: number;
+  /** asPrescribed / done, or 0 when nothing has been done at all. */
+  rate: number;
+};
+
+/**
+ * Whether the programme is being followed, as opposed to merely trained around.
+ *
+ * A completed day and a completed *session* are different facts and live in different
+ * columns: `done` says they trained, `altWorkout` says they did something other than the
+ * session prescribed for that day. A run of ✅ every one of which carries a substitute means
+ * the 15-week plan is not being followed at all — invisible in a completion percentage, and
+ * the single most useful thing to notice early.
+ *
+ * Not a judgement. A substituted session is a trained day; it is the plan that has stopped
+ * describing reality.
+ */
+export function adherence(records: DayRecord[], player: PlayerId): Adherence {
+  const done = records.filter((r) => !r.isRest && r[player].done);
+  const substituted = done.filter((r) => r[player].altWorkout !== "").length;
+  return {
+    done: done.length,
+    asPrescribed: done.length - substituted,
+    substituted,
+    rate: done.length === 0 ? 0 : (done.length - substituted) / done.length,
+  };
+}
+
+export type PaceGap = {
+  /** Mean logged pace over the range, or null when nothing was measured. */
+  actualSecPerKm: number | null;
+  /** The slower (easier) end of what the programme asked for on those days. */
+  targetSecPerKm: number | null;
+  /** Positive = slower than asked. Null when either side is unknown. */
+  behindSec: number | null;
+  /** Days in range that prescribed a pace at all. Recovery and rest days do not. */
+  daysWithTarget: number;
+};
+
+/**
+ * How far off the prescribed pace they are, in seconds.
+ *
+ * Measured against the *slower* end of each day's range: the range is what the programme will
+ * accept, so being at 4:30 on a "4:15~4:30" day is on target, not 15 seconds late. Days
+ * prescribed by effort ("RPE 7~8") or not at all ("Rest") carry no pace target and are
+ * excluded rather than treated as a target of zero.
+ */
+export function paceGap(records: DayRecord[], player: PlayerId): PaceGap {
+  const withTarget = records
+    .map((r) => ({ record: r, target: parsePaceTarget(r.paceTarget) }))
+    .filter((x): x is { record: DayRecord; target: { fastSec: number; slowSec: number } } => x.target !== null);
+
+  const paces = records.map((r) => r[player].paceSecPerKm).filter((p): p is number => p !== null);
+  const actual = mean(paces);
+  const target = mean(withTarget.map((x) => x.target.slowSec));
+
+  return {
+    actualSecPerKm: actual === null ? null : Math.round(actual),
+    targetSecPerKm: target === null ? null : Math.round(target),
+    behindSec: actual === null || target === null ? null : Math.round(actual - target),
+    daysWithTarget: withTarget.length,
+  };
+}
+
+export type Trend = {
+  windowDays: number;
+  recentAvg: number | null;
+  priorAvg: number | null;
+  /** recent − prior. Negative is faster/lighter; null when either window has no data. */
+  delta: number | null;
+};
+
+/**
+ * Compare the last `windowDays` against the `windowDays` before them.
+ *
+ * "체중이 2주째 정체" and "페이스가 3주간 12초 빨라졌다" are the observations worth making, and
+ * neither is answerable from a season average. Both windows must have data — a first window
+ * with nothing to compare against is not "no change", it is not yet known.
+ */
+export function trend(
+  records: DayRecord[],
+  player: PlayerId,
+  field: "weightKg" | "paceSecPerKm" | "rpe",
+  upto: string,
+  windowDays = 14,
+): Trend {
+  const cutoff = (offset: number): string => {
+    const d = new Date(`${upto}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - offset);
+    return d.toISOString().slice(0, 10);
+  };
+  const recentFrom = cutoff(windowDays - 1);
+  const priorFrom = cutoff(windowDays * 2 - 1);
+
+  const valuesIn = (from: string, to: string): number[] =>
+    records
+      .filter((r) => r.date >= from && r.date <= to)
+      .map((r) => r[player][field])
+      .filter((v): v is number => v !== null);
+
+  const recent = mean(valuesIn(recentFrom, upto));
+  const prior = mean(valuesIn(priorFrom, cutoff(windowDays)));
+  const round = (v: number | null) => (v === null ? null : Math.round(v * 10) / 10);
+
+  return {
+    windowDays,
+    recentAvg: round(recent),
+    priorAvg: round(prior),
+    delta: recent === null || prior === null ? null : round(recent - prior),
+  };
 }

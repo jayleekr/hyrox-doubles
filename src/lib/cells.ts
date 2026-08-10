@@ -180,12 +180,15 @@ export function parsePace(raw: unknown): number | null {
   return null;
 }
 
+/** 2:00/km is faster than any human sustains for 8km; 15:00/km is a walk. */
+export const PACE_MIN_SEC = 120;
+export const PACE_MAX_SEC = 900;
+
 export function validPace(n: unknown): number | null {
   const v = typeof n === "number" ? n : Number(n);
   if (!Number.isFinite(v)) return null;
   const secs = Math.round(v);
-  // 2:00/km is faster than any human sustains for 8km; 15:00/km is a walk.
-  if (secs < 120 || secs > 900) return null;
+  if (secs < PACE_MIN_SEC || secs > PACE_MAX_SEC) return null;
   return secs;
 }
 
@@ -257,4 +260,28 @@ export function cleanText(raw: unknown, max = MAX_CELL_TEXT): string {
 
 function trimNum(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+}
+
+/**
+ * Pull a pace range out of the free text in the paceTarget column.
+ *
+ * Real values from the sheet: "4:15~4:30/km (일정 유지)", "빌드업 (4:45 → 4:15/km)",
+ * "3:40~4:00/km (동반 페이스)", and also "RPE 7~8 (근지구력)", "RPE 2~3 (회복 중심)", "Rest".
+ *
+ * The last three are the interesting ones: a recovery day is prescribed by effort, not pace,
+ * and a rest day by nothing at all. Returning a number for those would invent a target the
+ * programme never set and then report the athlete as behind it — so anything with no M:SS in
+ * it is null, and callers must treat null as "no pace was asked for today".
+ */
+export function parsePaceTarget(raw: unknown): { fastSec: number; slowSec: number } | null {
+  if (typeof raw !== "string") return null;
+  const found: number[] = [];
+  for (const m of raw.matchAll(/(\d{1,2}):([0-5]\d)/g)) {
+    const secs = Number(m[1]) * 60 + Number(m[2]);
+    // Same bounds as a logged pace: anything outside is some other number that happens to
+    // look like a clock (a time of day, a total duration).
+    if (secs >= PACE_MIN_SEC && secs <= PACE_MAX_SEC) found.push(secs);
+  }
+  if (found.length === 0) return null;
+  return { fastSec: Math.min(...found), slowSec: Math.max(...found) };
 }

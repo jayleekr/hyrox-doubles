@@ -443,8 +443,13 @@ saying plainly, because it is invisible in a completion percentage:
 /Users/jaylee/CodeWorkspace/hyrox/bin/hyrox day <date> --json
 ```
 
-Read `altWorkout` against `area`/`plan`. When they diverge session after session, the pace and
-station targets in the phase plan are measuring something nobody is training for.
+`/Users/jaylee/CodeWorkspace/hyrox/bin/hyrox stats --who <a|b>` now reports this directly — **프로그램대로 N/M (대체 K)** — alongside
+the pace gap in seconds and a 14-day weight and pace trend. Use those numbers rather than
+working them out from `--json` yourself: a figure you recompute each time can be wrong
+differently each time, and nothing checks it.
+
+When 대체 keeps equalling 완료 session after session, the pace and station targets in the phase
+plan are measuring something nobody is training for.
 
 Say it once, with the count — "기록된 5세션 전부 대체 운동이다" — and then ask which way they
 want it: change the programme to match what they actually do, or do the prescribed sessions.

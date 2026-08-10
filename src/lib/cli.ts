@@ -36,7 +36,7 @@ import { isPhaseNamed, phaseByNumber, type PhaseNumber } from "./phases.ts";
 import { onboardingReport, type Onboarding } from "./goals.ts";
 import { MAX_CELL_TEXT, cleanText, formatPace, formatStatusCell, hasAuthoredStatusText } from "./cells.ts";
 import { morningBrief, nudgeBrief, savedBrief, weeklyBrief } from "./briefs.ts";
-import { findByDate, recordsForWeek, streak, summarize } from "./stats.ts";
+import { adherence, findByDate, paceGap, recordsForWeek, streak, summarize, trend } from "./stats.ts";
 import { clampMessage, formatDday } from "./messages.ts";
 import { renderDoctor, runDoctor } from "./doctor.ts";
 
@@ -764,18 +764,44 @@ export async function runCli(
         const upto = season.records.filter((r) => r.date <= today);
         const s = summarize(upto, player);
         const run = streak(season.records, player, today);
-        if (json) return ok(JSON.stringify({ player, ...s, streak: run }, null, 2));
+        const adhere = adherence(upto, player);
+        const gap = paceGap(upto, player);
+        const weightTrend = trend(upto, player, "weightKg", today);
+        const paceTrend = trend(upto, player, "paceSecPerKm", today);
+        if (json) {
+          return ok(
+            JSON.stringify(
+              { player, ...s, streak: run, adherence: adhere, paceGap: gap, trend: { weight: weightTrend, pace: paceTrend } },
+              null,
+              2,
+            ),
+          );
+        }
         const names = playerNames();
+        const signed = (v: number, unit: string) => `${v > 0 ? "+" : ""}${v}${unit}`;
         return ok(
           [
             `${names[player]} — 시즌 누적`,
             `완료 ${s.done}/${s.planned} (${Math.round(s.completion * 100)}%)`,
+            // Completion counts trained days; this counts days the *programme* was trained.
+            // A run of ✅ that are all substitutes reads as adherence until you split them.
+            adhere.done > 0
+              ? `프로그램대로 ${adhere.asPrescribed}/${adhere.done}${adhere.substituted > 0 ? ` (대체 ${adhere.substituted})` : ""}`
+              : "",
             `연속 ${run}일`,
             s.weightLast !== null
               ? `체중 ${s.weightLast}kg (${s.weightDelta !== null && s.weightDelta > 0 ? "+" : ""}${s.weightDelta ?? 0})`
               : "체중 기록 없음",
+            weightTrend.delta !== null ? `체중 ${weightTrend.windowDays}일 추세 ${signed(weightTrend.delta, "kg")}` : "",
             s.avgPaceSecPerKm !== null ? `평균 페이스 ${formatPace(s.avgPaceSecPerKm)}/km` : "페이스 기록 없음",
             s.bestPaceSecPerKm !== null ? `최고 페이스 ${formatPace(s.bestPaceSecPerKm)}/km` : "",
+            paceTrend.delta !== null ? `페이스 ${paceTrend.windowDays}일 추세 ${signed(paceTrend.delta, "초")}` : "",
+            gap.behindSec !== null
+              ? `목표 대비 ${gap.behindSec > 0 ? `${gap.behindSec}초 느림` : `${-gap.behindSec}초 빠름`} ` +
+                `(목표 ${formatPace(gap.targetSecPerKm!)}/km)`
+              : gap.daysWithTarget > 0
+                ? "페이스 측정이 없어서 목표 대비를 못 내"
+                : "",
           ]
             .filter(Boolean)
             .join("\n"),
